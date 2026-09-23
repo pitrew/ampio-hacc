@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import datetime as dt
 import logging
 from collections import defaultdict
@@ -9,6 +10,7 @@ from enum import Enum, IntEnum
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import attr
+import voluptuous as vol
 from homeassistant.const import (
     CONF_DEVICE_CLASS,
     CONF_ICON,
@@ -40,7 +42,9 @@ from .const import (
     DOMAIN,
 )
 from .validators import (
+    AMPIO_DESCRIPTION_SCHEMA,
     AMPIO_DESCRIPTIONS_SCHEMA,
+    AMPIO_DEVICE_SCHEMA,
     AMPIO_DEVICES_SCHEMA,
     ATTR_A,
     ATTR_AU,
@@ -210,9 +214,13 @@ class ItemTypes(str, Enum):
 def base64decode(value: str):
     """Decode base64 string."""
     try:
-        return base64.b64decode(value).decode("utf-8").strip()
+        raw = base64.b64decode(value)
+    except (binascii.Error, ValueError):
+        return str(value).strip()
+    try:
+        return raw.decode("utf-8").strip()
     except UnicodeDecodeError:
-        return base64.b64decode(value).decode("cp1254").strip()
+        return raw.decode("cp1254", errors="replace").strip()
 
 
 def base64encode(value: str):
@@ -260,7 +268,12 @@ class ItemName:
         """Read from topic payload."""
         names: Dict[str, Union[int, Dict]] = AMPIO_DESCRIPTIONS_SCHEMA(payload)
         result = {}
-        for name in names[ATTR_D]:
+        for raw_name in names[ATTR_D]:
+            try:
+                name = AMPIO_DESCRIPTION_SCHEMA(raw_name)
+            except vol.Invalid as err:
+                _LOGGER.debug("Ignoring Ampio item name %s: %s", raw_name, err)
+                continue
             name_data = name[ATTR_D]
             name_type = name[ATTR_T]
             name_index = name[ATTR_N]
@@ -335,7 +348,16 @@ class AmpioModuleInfo:
         """Create a module object from topic payload."""
         devices = AMPIO_DEVICES_SCHEMA(payload)
         result = []
-        for device in devices[ATTR_D]:
+        for raw_device in devices[ATTR_D]:
+            try:
+                device = AMPIO_DEVICE_SCHEMA(raw_device)
+            except vol.Invalid as err:
+                _LOGGER.warning(
+                    "Skipping Ampio module with unexpected payload %s: %s",
+                    raw_device,
+                    err,
+                )
+                continue
             klass = CLASS_FACTORY.get(device[ATTR_TYPE], AmpioModuleInfo)
             result.append(
                 klass(

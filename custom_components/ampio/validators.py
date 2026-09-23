@@ -43,51 +43,65 @@ def ensure_list(value: Union[T, List[T], None]) -> List[T]:
     return value if isinstance(value, list) else [value]
 
 
+def lenient_int(value: Any) -> int:
+    """Coerce a value to int, falling back to 0.
+
+    Firmware revisions report some of these fields as strings, floats or
+    formatted dates, and none of them are worth failing discovery over.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 AMPIO_DEVICE_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_MAC): string,
         vol.Required(ATTR_USERMAC): string,
-        vol.Required(ATTR_TYPE): vol.Coerce(int),
-        vol.Required(ATTR_PCB): vol.Coerce(int),
-        vol.Required(ATTR_SOFTWARE): vol.Coerce(int),
-        vol.Required(ATTR_PROTOCOL): vol.Coerce(int),
-        vol.Required(ATTR_DATE_PROD): vol.Coerce(int),
-        vol.Required(ATTR_I): vol.Coerce(int),
-        vol.Required(ATTR_O): vol.Coerce(int),
-        vol.Required(ATTR_A): vol.Coerce(int),
-        vol.Required(ATTR_AU): vol.Coerce(int),
-        vol.Required(ATTR_T): vol.Coerce(int),
-        vol.Required(ATTR_FLAG): vol.Coerce(int),
-        vol.Required(ATTR_NAME): string,
-    }
+        vol.Required(ATTR_TYPE): lenient_int,
+        vol.Optional(ATTR_PCB, default=0): lenient_int,
+        vol.Optional(ATTR_SOFTWARE, default=0): lenient_int,
+        vol.Optional(ATTR_PROTOCOL, default=0): lenient_int,
+        vol.Optional(ATTR_DATE_PROD, default=0): lenient_int,
+        vol.Optional(ATTR_I, default=0): lenient_int,
+        vol.Optional(ATTR_O, default=0): lenient_int,
+        vol.Optional(ATTR_A, default=0): lenient_int,
+        vol.Optional(ATTR_AU, default=0): lenient_int,
+        vol.Optional(ATTR_T, default=0): lenient_int,
+        vol.Optional(ATTR_FLAG, default=0): lenient_int,
+        vol.Optional(ATTR_NAME, default=""): string,
+    },
+    extra=vol.ALLOW_EXTRA,
 )
 
+# Devices are validated one by one so a single unexpected entry cannot
+# discard the whole CAN device list.
 AMPIO_DEVICES_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_S): vol.Coerce(int),
-        vol.Optional(ATTR_D, default=[]): vol.All(
-            ensure_list,
-            # pylint: disable=unnecessary-lambda
-            [lambda value: AMPIO_DEVICE_SCHEMA(value)],
-        ),
-    }
+        vol.Optional(ATTR_S, default=0): lenient_int,
+        vol.Optional(ATTR_D, default=[]): vol.All(ensure_list, [dict]),
+    },
+    extra=vol.ALLOW_EXTRA,
 )
 
 AMPIO_DESCRIPTION_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_T): string,
-        vol.Required(ATTR_N): vol.Coerce(int),
+        vol.Required(ATTR_N): lenient_int,
         vol.Required(ATTR_D): string,
-    }
+    },
+    extra=vol.ALLOW_EXTRA,
 )
 
 AMPIO_DESCRIPTIONS_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_S): vol.Coerce(int),
-        vol.Optional(ATTR_D, default=[]): vol.All(
-            ensure_list,
-            # pylint: disable=unnecessary-lambda
-            [lambda value: AMPIO_DESCRIPTION_SCHEMA(value)],
-        ),
-    }
+        vol.Optional(ATTR_S, default=0): lenient_int,
+        vol.Optional(ATTR_D, default=[]): vol.All(ensure_list, [dict]),
+    },
+    extra=vol.ALLOW_EXTRA,
 )

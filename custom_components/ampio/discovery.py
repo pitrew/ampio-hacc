@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 import homeassistant.helpers.device_registry as dr
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -80,7 +81,14 @@ async def async_start(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
             _LOGGER.error("Unable to parse JSON module list: %s", err)
             return
 
-        modules = AmpioModuleInfo.from_topic_payload(payload)
+        _LOGGER.debug("Module list payload: %s", payload)
+        try:
+            modules = AmpioModuleInfo.from_topic_payload(payload)
+        except vol.Invalid as err:
+            _LOGGER.error(
+                "Unexpected Ampio module list payload %s: %s", payload, err
+            )
+            return
 
         for module in modules:
             data_modules = hass.data[DATA_AMPIO_MODULES]
@@ -117,7 +125,13 @@ async def async_start(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
             _LOGGER.error("Unable to parse JSON module names: %s", err)
             return
 
-        module.names = ItemName.from_topic_payload(payload)
+        try:
+            module.names = ItemName.from_topic_payload(payload)
+        except vol.Invalid as err:
+            _LOGGER.error(
+                "Unexpected Ampio names payload for %s: %s", mac, err
+            )
+            return
         module.update_configs()
 
         _LOGGER.info(

@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "broker": {
+        "title": "Połącz z Ampio",
+        "description": "Wprowadź informacje o połączeniu z MQTT broker na serwerze Ampio.",
+        "data": {
+          "broker": "Adres serwera",
+          "port": "Port serwera",
+          "username": "Nazwa użytkownika",
+          "password": "Hasło"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Ampio jest już skonfigurowany.",
+      "already_configured": "Ten serwer Ampio jest już skonfigurowany."
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z MQTT broker na serwerze Ampio."
+    }
+  }
+}

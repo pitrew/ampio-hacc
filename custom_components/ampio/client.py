@@ -182,10 +182,17 @@ class AmpioAPI:
 
     async def _async_unsubscribe(self, topic: str) -> None:
         """Unsubscribe through paho."""
+        if not self.connected:
+            return
         async with self._paho_lock:
             result, _mid = await self.hass.async_add_executor_job(
                 self._mqttc.unsubscribe, topic
             )
+        # Losing the connection while unsubscribing is not an error: the
+        # subscription is gone either way and is restored on reconnect.
+        if result == mqtt.MQTT_ERR_NO_CONN:
+            _LOGGER.debug("Skipped unsubscribe from %s while disconnected", topic)
+            return
         self._raise_on_error(result)
 
     def _mqtt_on_connect(
