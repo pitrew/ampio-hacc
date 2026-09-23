@@ -1,14 +1,15 @@
 """Ampio Sensors."""
 import functools
 import logging
-from homeassistant.util.dt import now
 
 from homeassistant.components import binary_sensor
-from homeassistant.core import callback
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_DEVICE_CLASS, STATE_ON
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.typing import ConfigType, HomeAssistantType
-from homeassistant.const import STATE_ON
 
 from . import discovery, subscription
 from .const import (
@@ -33,6 +34,8 @@ class AmpioBinarySensor(AmpioEntity, RestoreEntity, binary_sensor.BinarySensorEn
     def __init__(self, config):
         """Initialize the light component."""
         AmpioEntity.__init__(self, config)
+        if device_class := config.get(CONF_DEVICE_CLASS):
+            self._attr_device_class = BinarySensorDeviceClass(device_class)
 
     async def subscribe_topics(self):
         """(Re)Subscribe to topics."""
@@ -95,8 +98,10 @@ class AmpioBinarySensor(AmpioEntity, RestoreEntity, binary_sensor.BinarySensorEn
 
 
 async def async_setup_entry(
-    hass: HomeAssistantType, config_entry: ConfigType, async_add_entities
-):
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up MQTT sensors dynamically through MQTT discovery."""
     entities_to_create = hass.data[DATA_AMPIO][binary_sensor.DOMAIN]
 

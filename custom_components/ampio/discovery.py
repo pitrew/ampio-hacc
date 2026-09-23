@@ -1,26 +1,23 @@
 """Module and entity discovery."""
-import asyncio
 import json
 import logging
 import re
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import callback
 import homeassistant.helpers.device_registry as dr
-from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.typing import HomeAssistantType
 
-from . import client as ampio, subscription
+from . import client as ampio
+from . import subscription
 from .const import (
     ATTR_VERSION,
-    CONFIG_ENTRY_IS_SETUP,
     DATA_AMPIO,
+    DATA_AMPIO_API,
     DATA_AMPIO_MODULES,
-    DATA_AMPIO_PLATFORM_LOADED,
     DATA_AMPIO_UNIQUE_IDS,
-    DATA_CONFIG_ENTRY_LOCK,
     DEFAULT_QOS,
     DOMAIN,
     SIGNAL_ADD_ENTITIES,
@@ -44,12 +41,12 @@ MAC_FROM_TOPIC_RE = re.compile(r"^ampio/from/(?P<mac>.*)/.*$")
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
+async def async_start(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Start Ampio discovery."""
     topics = {}
 
     @callback
-    async def version_info_received(msg):
+    def version_info_received(msg):
         """Process the version info message."""
         _LOGGER.debug("Version %s", msg.payload)
         try:
@@ -58,10 +55,9 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
             _LOGGER.error("Unable to decode Ampio MQTT Server version")
             return
         version = data.get(ATTR_VERSION, "N/A")
-        device_registry = await hass.helpers.device_registry.async_get_registry()
+        device_registry = dr.async_get(hass)
         device_registry.async_get_or_create(
             config_entry_id=config_entry.entry_id,
-            connections={(CONNECTION_NETWORK_MAC, str("ampio-mqtt"))},
             identifiers={(DOMAIN, str("ampio-mqtt"))},
             name="Ampio MQTT Server",
             manufacturer="Ampio",
@@ -76,7 +72,7 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
     }
 
     @callback
-    async def device_list_received(msg):
+    def device_list_received(msg):
         """Process device list info message."""
         try:
             payload = json.loads(msg.payload)
@@ -84,15 +80,18 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
             _LOGGER.error("Unable to parse JSON module list: %s", err)
             return
 
-        modules: List[AmpioModuleInfo] = AmpioModuleInfo.from_topic_payload(payload)
+        modules = AmpioModuleInfo.from_topic_payload(payload)
 
         for module in modules:
             data_modules = hass.data[DATA_AMPIO_MODULES]
-            await async_setup_device_registry(hass, config_entry, module)
+            async_setup_device_registry(hass, config_entry, module)
             data_modules[module.user_mac] = module
             ampio.async_publish(
                 hass, REQUEST_MODULE_NAMES.format(mac=module.user_mac), "1", 0, False
             )
+        if not modules:
+            _LOGGER.info("No Ampio modules discovered")
+            async_load_entities(hass)
 
     topics[RESPONSE_MODULE_DISCOVERY] = {
         "topic": RESPONSE_MODULE_DISCOVERY,
@@ -100,8 +99,9 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
         "qos": DEFAULT_QOS,
     }
 
-    async def module_names_received(msg):
-        "Handle names update." ""
+    @callback
+    def module_names_received(msg):
+        """Handle module names update."""
         matched = MAC_FROM_TOPIC_RE.match(msg.topic)
         if matched:
             mac = matched.group("mac").upper()
@@ -137,9 +137,9 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
                     _LOGGER.debug("Ignoring: %s", unique_id)
 
         del hass.data[DATA_AMPIO_MODULES][mac]
+        async_load_entities(hass)
         if len(hass.data[DATA_AMPIO_MODULES]) == 0:  # ALL MODULES discovered
             _LOGGER.info("All modules discovered")
-            asyncio.create_task(async_load_entities(hass))
 
     topics[RESPONSE_MODULE_NAMES] = {
         "topic": RESPONSE_MODULE_NAMES,
@@ -147,8 +147,6 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
         "qos": DEFAULT_QOS,
     }
 
-    hass.data[DATA_CONFIG_ENTRY_LOCK] = asyncio.Lock()
-    hass.data[CONFIG_ENTRY_IS_SETUP] = set()
     hass.data[DATA_AMPIO_MODULES] = {}
     hass.data[DATA_AMPIO_UNIQUE_IDS] = set()
 
@@ -156,33 +154,37 @@ async def async_start(hass: HomeAssistantType, config_entry=None) -> bool:
         hass, hass.data.get(DISCOVERY_UNSUBSCRIBE), topics
     )
 
-    ampio.async_publish(hass, REQUEST_AMPIO_VERSION, "", 0, False)
-    ampio.async_publish(hass, REQUEST_MODULE_DISCOVERY, "1", 0, False)
     return True
 
 
+async def async_request_discovery(hass: HomeAssistant) -> None:
+    """Request broker and CAN module information."""
+    client = hass.data[DATA_AMPIO][DATA_AMPIO_API]
+    await client.async_publish(REQUEST_AMPIO_VERSION, "", 0, False)
+    await client.async_publish(REQUEST_MODULE_DISCOVERY, "1", 0, False)
+
+
 @callback
-async def async_stop(hass: HomeAssistantType) -> bool:
+async def async_stop(hass: HomeAssistant) -> None:
     """Stop Ampio MQTT Discovery."""
-    hass.data[DISCOVERY_UNSUBSCRIBE] = await subscription.async_unsubscribe_topics(
-        hass, hass.data[DISCOVERY_UNSUBSCRIBE]
-    )
+    if sub_state := hass.data.pop(DISCOVERY_UNSUBSCRIBE, None):
+        await subscription.async_unsubscribe_topics(hass, sub_state)
 
 
 @callback
-async def async_setup_device_registry(
-    hass: HomeAssistantType, entry: ConfigEntry, device_info: AmpioModuleInfo
+def async_setup_device_registry(
+    hass: HomeAssistant, entry: ConfigEntry, device_info: AmpioModuleInfo
 ):
     """Set up device registry feature for a particular config entry."""
-    device_registry = await dr.async_get_registry(hass)
+    device_registry = dr.async_get(hass)
     return device_registry.async_get_or_create(
         config_entry_id=entry.entry_id, **device_info.as_hass_device()
     )
 
 
 @callback
-async def async_add_entities(
-    _async_add_entities: Callable, entities: List[Dict[str, Any]], klass
+def async_add_entities(
+    _async_add_entities: Callable, entities: list[dict[str, Any]], klass
 ) -> None:
     """Add entities helper."""
     if not entities:
@@ -193,11 +195,7 @@ async def async_add_entities(
     entities.clear()
 
 
-async def async_load_entities(hass: HomeAssistantType) -> None:
+@callback
+def async_load_entities(hass: HomeAssistant) -> None:
     """Load entities after integration was setup."""
-    to_setup = hass.data[DATA_AMPIO][DATA_AMPIO_PLATFORM_LOADED]
-    results = await asyncio.gather(*to_setup, return_exceptions=True)
-    for res in results:
-        if isinstance(res, Exception):
-            _LOGGER.warning("Couldn't setup Ampio platform: %s", res)
     async_dispatcher_send(hass, SIGNAL_ADD_ENTITIES)

@@ -1,21 +1,17 @@
-"""Ampio platform consts."""
+"""Constants for the Ampio integration."""
 
+from homeassistant.const import Platform
 
-from homeassistant.components.alarm_control_panel import DOMAIN as ALARM_CONTROL_PANEL
-from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR
-from homeassistant.components.cover import DOMAIN as COVER
-from homeassistant.components.light import DOMAIN as LIGHT
-from homeassistant.components.sensor import DOMAIN as SENSOR
-from homeassistant.components.switch import DOMAIN as SWITCH
+PLATFORMS: list[Platform] = [
+    Platform.ALARM_CONTROL_PANEL,
+    Platform.BINARY_SENSOR,
+    Platform.COVER,
+    Platform.LIGHT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
-COMPONENTS = (
-    ALARM_CONTROL_PANEL,
-    BINARY_SENSOR,
-    COVER,
-    LIGHT,
-    SENSOR,
-    SWITCH,
-)
+COMPONENTS = tuple(platform.value for platform in PLATFORMS)
 
 DOMAIN = "ampio"
 

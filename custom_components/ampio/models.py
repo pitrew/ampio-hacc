@@ -2,23 +2,19 @@
 from __future__ import annotations
 
 import base64
-from collections import defaultdict
 import datetime as dt
-from enum import Enum, IntEnum
 import logging
+from collections import defaultdict
+from enum import Enum, IntEnum
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import attr
-
 from homeassistant.const import (
-    CONF_DEVICE,
     CONF_DEVICE_CLASS,
-    CONF_FRIENDLY_NAME,
     CONF_ICON,
     CONF_NAME,
     CONF_UNIT_OF_MEASUREMENT,
 )
-from homeassistant.helpers import device_registry
 
 from .const import (
     CONF_ALARM_TOPIC,
@@ -48,14 +44,14 @@ from .validators import (
     AMPIO_DEVICES_SCHEMA,
     ATTR_A,
     ATTR_AU,
-    ATTR_I,
-    ATTR_O,
     ATTR_D,
     ATTR_DATE_PROD,
     ATTR_FLAG,
+    ATTR_I,
     ATTR_MAC,
     ATTR_N,
     ATTR_NAME,
+    ATTR_O,
     ATTR_PCB,
     ATTR_PROTOCOL,
     ATTR_SOFTWARE,
@@ -134,9 +130,10 @@ class ModuleCodes(IntEnum):
     MDOT2 = 33
 
 
-DOMAIN = "ampio"
-
 _LOGGER = logging.getLogger(__name__)
+
+CONF_DEVICE = "device"
+CONF_FRIENDLY_NAME = "friendly_name"
 
 PublishPayloadType = Union[str, bytes, int, float, None]
 
@@ -325,12 +322,11 @@ class AmpioModuleInfo:
     def as_hass_device(self) -> Dict[str, Any]:
         """Return info in hass device format."""
         return {
-            "connections": {(device_registry.CONNECTION_NETWORK_MAC, self.user_mac)},
             "identifiers": {(DOMAIN, self.user_mac)},
             "name": self.name,
             "manufacturer": "Ampio",
             "model": self.model,
-            "sw_version": self.software,
+            "sw_version": str(self.software),
             "via_device": (DOMAIN, "ampio-mqtt"),
         }
 

@@ -1,16 +1,19 @@
 """Ampio Sensors."""
 import functools
 import logging
-from datetime import timedelta
-from typing import Optional
 
 from homeassistant.components import sensor
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_DEVICE_CLASS, CONF_ICON, CONF_UNIT_OF_MEASUREMENT
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.typing import ConfigType, HomeAssistantType
 
 from . import discovery, subscription
 from .const import (
@@ -27,15 +30,18 @@ _LOGGER = logging.getLogger(__name__)
 CONF_EXPIRE_AFTER = "expire_after"
 DEFAULT_FORCE_UPDATE = False
 DEFAULT_NAME = "Ampio Sensor"
-SCAN_INTERVAL = timedelta(seconds=15)
-
-
-class AmpioSensor(AmpioEntity, RestoreEntity, Entity):
+class AmpioSensor(AmpioEntity, RestoreEntity, SensorEntity):
     """Representation of Ampio Sensor."""
 
     def __init__(self, config):
         """Initialize the sensor."""
         AmpioEntity.__init__(self, config)
+        self._attr_native_unit_of_measurement = config.get(CONF_UNIT_OF_MEASUREMENT)
+        self._attr_icon = config.get(CONF_ICON)
+        if device_class := config.get(CONF_DEVICE_CLASS):
+            self._attr_device_class = SensorDeviceClass(device_class)
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_force_update = True
 
     async def subscribe_topics(self):
         """(Re)Subscribe to topics."""
@@ -69,7 +75,10 @@ class AmpioSensor(AmpioEntity, RestoreEntity, Entity):
         last_state = await self.async_get_last_state()
         if not last_state:
             return
-        self._state = last_state.state
+        try:
+            self._state = float(last_state.state)
+        except ValueError:
+            self._state = None
 
 
     async def async_will_remove_from_hass(self):
@@ -79,43 +88,16 @@ class AmpioSensor(AmpioEntity, RestoreEntity, Entity):
         )
 
     @property
-    def unit_of_measurement(self):
-        """Return the unit this state is expressed in."""
-        return self._config.get(CONF_UNIT_OF_MEASUREMENT)
-
-    @property
-    def state(self):
-        """Return the state of the entity."""
+    def native_value(self) -> float | str | None:
+        """Return the sensor value."""
         return self._state
-
-    @property
-    def icon(self):
-        """Return the icon."""
-        return self._config.get(CONF_ICON)
-
-    @property
-    def device_class(self) -> Optional[str]:
-        """Return the device class of the sensor."""
-        return self._config.get(CONF_DEVICE_CLASS)
-
-    @property
-    def should_poll(self):
-        """Poll the sensor to get even data stream even if ther is no change."""
-        return True
-
-    @property
-    def force_update(self) -> bool:
-        """Return True if state updates should be forced.
-
-        If True, a state change will be triggered anytime the state property is
-        updated, not just when the value changes.
-        """
-        return True
 
 
 async def async_setup_entry(
-    hass: HomeAssistantType, config_entry: ConfigType, async_add_entities
-):
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up MQTT sensors dynamically through MQTT discovery."""
     entities_to_create = hass.data[DATA_AMPIO][sensor.DOMAIN]
 

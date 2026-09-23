@@ -3,9 +3,11 @@ import functools
 import logging
 
 from homeassistant.components import switch
-from homeassistant.core import callback
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.typing import ConfigType, HomeAssistantType
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import discovery, subscription
 from .client import async_publish
@@ -22,7 +24,7 @@ from .entity import AmpioEntity
 _LOGGER = logging.getLogger(__name__)
 
 
-class AmpioSwitch(AmpioEntity, switch.SwitchEntity):
+class AmpioSwitch(AmpioEntity, SwitchEntity):
     """Representation of Ampio Light."""
 
     def __init__(self, config):
@@ -62,8 +64,8 @@ class AmpioSwitch(AmpioEntity, switch.SwitchEntity):
         )
 
     @property
-    def is_on(self):
-        """Return true if the binary sensor is on."""
+    def is_on(self) -> bool | None:
+        """Return whether the switch is on."""
         return self._state
 
     async def async_turn_off(self, **kwargs):
@@ -77,8 +79,10 @@ class AmpioSwitch(AmpioEntity, switch.SwitchEntity):
 
 
 async def async_setup_entry(
-    hass: HomeAssistantType, config_entry: ConfigType, async_add_entities
-):
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up MQTT sensors dynamically through MQTT discovery."""
     entities_to_create = hass.data[DATA_AMPIO][switch.DOMAIN]
 

@@ -5,18 +5,14 @@ import logging
 from typing import Optional, Union
 
 from homeassistant.components import alarm_control_panel as alarm
-from homeassistant.const import (
-    STATE_ALARM_ARMED_AWAY,
-    STATE_ALARM_ARMED_HOME,
-    STATE_ALARM_ARMING,
-    STATE_ALARM_DISARMED,
-    STATE_ALARM_PENDING,
-    STATE_ALARM_TRIGGERED,
-    STATE_UNKNOWN,
+from homeassistant.components.alarm_control_panel import (
+    AlarmControlPanelEntityFeature,
+    AlarmControlPanelState,
 )
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.typing import ConfigType, HomeAssistantType
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import discovery, subscription
 from .client import async_publish
@@ -47,7 +43,8 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
         """Initialize the light component."""
         AmpioEntity.__init__(self, config)
 
-        self._state = STATE_UNKNOWN
+        self._state = None
+        self._attr_code_arm_required = False
         self._armed = set()
         self._alarm = set()
         self._exittime = set()
@@ -63,7 +60,7 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
 
         if CONF_AWAY_ZONES in self._config:
             self._away_zones = self._config[CONF_AWAY_ZONES]
-            self._supported_features |= alarm.SUPPORT_ALARM_ARM_AWAY
+            self._supported_features |= AlarmControlPanelEntityFeature.ARM_AWAY
             mask = 0
             for zone in self._away_zones:
                 mask |= (0x01 << (zone - 1)) & 0xFFFFFFFF
@@ -71,7 +68,7 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
 
         if CONF_HOME_ZONES in self._config:
             self._home_zones = self._config[CONF_HOME_ZONES]
-            self._supported_features |= alarm.SUPPORT_ALARM_ARM_HOME
+            self._supported_features |= AlarmControlPanelEntityFeature.ARM_HOME
             mask = 0
             for zone in self._home_zones:
                 mask |= (0x01 << (zone - 1)) & 0xFFFFFFFF
@@ -87,19 +84,19 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
     def state(self) -> Union[None, str, int, float]:
         """Return the state of the entity."""
         if self._away_zones == self._armed & self._away_zones:
-            self._state = STATE_ALARM_ARMED_AWAY
+            self._state = AlarmControlPanelState.ARMED_AWAY
 
         if self._home_zones == self._armed & self._home_zones:
-            self._state = STATE_ALARM_ARMED_HOME
+            self._state = AlarmControlPanelState.ARMED_HOME
 
         if self._alarm:
-            self._state = STATE_ALARM_TRIGGERED
+            self._state = AlarmControlPanelState.TRIGGERED
 
         if self._exittime or self._exittime10:
-            self._state = STATE_ALARM_ARMING
+            self._state = AlarmControlPanelState.ARMING
 
         if self._entrytime:
-            self._state = STATE_ALARM_PENDING
+            self._state = AlarmControlPanelState.PENDING
 
         if not any(
             (
@@ -110,7 +107,7 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
                 self._entrytime,
             )
         ):
-            self._state = STATE_ALARM_DISARMED
+            self._state = AlarmControlPanelState.DISARMED
 
         return self._state
 
@@ -123,7 +120,8 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
             """Handler new MQTT message."""
             data = IndexIntData.from_msg(msg)
             if data is None:
-                _LOGGER.error("Undable to parse MQTT message")
+                _LOGGER.error("Unable to parse MQTT message")
+                return
 
             if data.value == 1:
                 self._armed.add(data.index)
@@ -144,7 +142,8 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
             """Handler new MQTT message."""
             data = IndexIntData.from_msg(msg)
             if data is None:
-                _LOGGER.error("Undable to parse MQTT message")
+                _LOGGER.error("Unable to parse MQTT message")
+                return
 
             if data.value == 1:
                 self._alarm.add(data.index)
@@ -165,7 +164,8 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
             """Handler new MQTT message."""
             data = IndexIntData.from_msg(msg)
             if data is None:
-                _LOGGER.error("Undable to parse MQTT message")
+                _LOGGER.error("Unable to parse MQTT message")
+                return
 
             if data.value == 1:
                 self._entrytime.add(data.index)
@@ -186,7 +186,8 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
             """Handler new MQTT message."""
             data = IndexIntData.from_msg(msg)
             if data is None:
-                _LOGGER.error("Undable to parse MQTT message")
+                _LOGGER.error("Unable to parse MQTT message")
+                return
 
             if data.value == 1:
                 self._exittime.add(data.index)
@@ -207,7 +208,8 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
             """Handler new MQTT message."""
             data = IndexIntData.from_msg(msg)
             if data is None:
-                _LOGGER.error("Undable to parse MQTT message")
+                _LOGGER.error("Unable to parse MQTT message")
+                return
 
             if data.value == 1:
                 self._exittime10.add(data.index)
@@ -240,7 +242,7 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
 
     async def async_alarm_disarm(self, code=None):
         """Send disarm command."""
-        clear_alarm = self._state == STATE_ALARM_TRIGGERED
+        clear_alarm = self._state == AlarmControlPanelState.TRIGGERED
         cmd = f"1E0084{self._all_cmd_data}"
         _LOGGER.debug("Command disarm: %s", cmd)
         async_publish(self.hass, self._config[CONF_RAW_TOPIC], cmd, 0, False)
@@ -266,8 +268,10 @@ class AmpioSatelAlarmControlPanel(AmpioEntity, alarm.AlarmControlPanelEntity):
 
 
 async def async_setup_entry(
-    hass: HomeAssistantType, config_entry: ConfigType, async_add_entities
-):
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up MQTT sensors dynamically through MQTT discovery."""
     entities_to_create = hass.data[DATA_AMPIO][alarm.DOMAIN]
 

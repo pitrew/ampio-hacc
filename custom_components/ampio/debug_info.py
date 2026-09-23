@@ -1,10 +1,10 @@
 """Helper to handle a set of topics to subscribe to."""
+import logging
 from collections import deque
 from functools import wraps
-import logging
 from typing import Any
 
-from homeassistant.helpers.typing import HomeAssistantType
+from homeassistant.core import HomeAssistant
 
 from .const import ATTR_DISCOVERY_PAYLOAD
 from .models import MessageCallbackType
@@ -15,7 +15,7 @@ DATA_MQTT_DEBUG_INFO = "ampio_debug_info"
 STORED_MESSAGES = 10
 
 
-def log_messages(hass: HomeAssistantType, entity_id: str) -> MessageCallbackType:
+def log_messages(hass: HomeAssistant, entity_id: str) -> MessageCallbackType:
     """Wrap an MQTT message callback to support message logging."""
 
     def _log_message(msg):

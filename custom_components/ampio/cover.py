@@ -3,10 +3,17 @@ import functools
 import logging
 
 from homeassistant.components import cover
-from homeassistant.core import callback
+from homeassistant.components.cover import (
+    ATTR_POSITION,
+    ATTR_TILT_POSITION,
+    CoverDeviceClass,
+    CoverEntityFeature,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.typing import ConfigType, HomeAssistantType
 
 from . import discovery, subscription
 from .client import async_publish
@@ -45,8 +52,22 @@ class AmpioCover(AmpioEntity, RestoreEntity, cover.CoverEntity):
             parts = state_topic.split("/")
             self._index = int(parts[-1])
 
-        # AmpioModuleDiscoveryUpdate.__init__(self, self.discovery_update)
-        # AmpioEntityDeviceInfo.__init__(self, device_info, config_entry)
+        self._attr_device_class = CoverDeviceClass(
+            config.get("device_class", CoverDeviceClass.SHUTTER)
+        )
+        self._attr_supported_features = (
+            CoverEntityFeature.OPEN
+            | CoverEntityFeature.CLOSE
+            | CoverEntityFeature.STOP
+            | CoverEntityFeature.SET_POSITION
+        )
+        if config.get(CONF_TILT_POSITION_TOPIC):
+            self._attr_supported_features |= (
+                CoverEntityFeature.OPEN_TILT
+                | CoverEntityFeature.CLOSE_TILT
+                | CoverEntityFeature.STOP_TILT
+                | CoverEntityFeature.SET_TILT_POSITION
+            )
 
     async def subscribe_topics(self):
         """(Re)Subscribe to topics."""
@@ -76,7 +97,6 @@ class AmpioCover(AmpioEntity, RestoreEntity, cover.CoverEntity):
             try:
                 self._tilt_position = int(payload)
             except ValueError:
-                raise
                 return
 
             self.async_write_ha_state()
@@ -133,9 +153,13 @@ class AmpioCover(AmpioEntity, RestoreEntity, cover.CoverEntity):
         if last_state is not None:
             self._state = last_state.state
             if cover.ATTR_CURRENT_POSITION in last_state.attributes:
-                self._cover_position = last_state.attributes[cover.ATTR_CURRENT_POSITION]
+                self._cover_position = last_state.attributes[
+                    cover.ATTR_CURRENT_POSITION
+                ]
             if cover.ATTR_CURRENT_TILT_POSITION in last_state.attributes:
-                self._tilt_position = last_state.attributes[cover.ATTR_CURRENT_TILT_POSITION]
+                self._tilt_position = last_state.attributes[
+                    cover.ATTR_CURRENT_TILT_POSITION
+                ]
 
 
     async def async_will_remove_from_hass(self):
@@ -195,7 +219,7 @@ class AmpioCover(AmpioEntity, RestoreEntity, cover.CoverEntity):
 
     async def async_set_cover_position(self, **kwargs):
         """Move the cover to a specific position."""
-        position = kwargs.get("position")
+        position = kwargs.get(ATTR_POSITION)
         if position is not None:
             cmd = b"\x00\x01"
             position = 0xFF & position
@@ -229,7 +253,7 @@ class AmpioCover(AmpioEntity, RestoreEntity, cover.CoverEntity):
 
     async def async_set_cover_tilt_position(self, **kwargs):
         """Move the cover tilt to a specific position."""
-        position = kwargs.get("tilt_position")
+        position = kwargs.get(ATTR_TILT_POSITION)
         if position is not None:
             cmd = b"\x00\x02"
             position = 0xFF & position
@@ -245,8 +269,10 @@ class AmpioCover(AmpioEntity, RestoreEntity, cover.CoverEntity):
 
 
 async def async_setup_entry(
-    hass: HomeAssistantType, config_entry: ConfigType, async_add_entities
-):
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up MQTT sensors dynamically through MQTT discovery."""
     entities_to_create = hass.data[DATA_AMPIO][cover.DOMAIN]
 

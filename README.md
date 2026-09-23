@@ -9,9 +9,17 @@
 
 [![Ampio](https://ampio.pl/wp-content/themes/1140FluidStarkers/images/ampio_dark.png)](https://ampio.pl)
 
-This is the custom integration of Ampio Smart Home System with  Home Assistant.
+This is a custom integration of the Ampio Smart Home System with Home Assistant.
 
-It uses MQTT connecting directly to the MQTT broker running on Ampio Server.
+It connects directly to the MQTT broker running on the Ampio Server. The broker
+address and credentials are configured in the integration; Home Assistant's
+built-in MQTT integration is not required.
+
+## Requirements
+
+- Home Assistant Core 2026.9.0 or newer
+- Ampio MQTT Bridge 3.41.2 or newer
+- Ampio v1 MQTT topics (`ampio/from/...` and `ampio/to/...`)
 
 Currently there are following modules supported:
 - MSERV-3s - flags
@@ -29,28 +37,26 @@ Currently there are following modules supported:
 - MDOT-9
 - MDOT-15LCD
 
-The integation works with Ampio MQTT Bridge version: 3.41.2
+## Installation
 
-## Installtion
-Copy the ampio folder and all of its contents into your Home Assistant's custom_components folder. This is often located inside of your /config folder. If you are running Hass.io, use SAMBA to copy the folder over. If you are running Home Assistant Supervised, the custom_components folder might be located at /usr/share/hassio/homeassistant. It is possible that your custom_components folder does not exist. If that is the case, create the folder in the proper location, and then copy the localtuya folder and all of its contents inside the newly created custom_components folder.
-
-Alternatively, you can install Ampio integration through HACS by adding this repository.
+Install the repository through HACS as a custom integration, then restart Home
+Assistant. For manual installation, copy `custom_components/ampio` to
+`/config/custom_components/ampio` and restart Home Assistant.
 
 ## Configuration
 
-Start by going to Configuration - Integration and pressing the "+" button to create a new Integration, then select Ampio in the drop-down menu.
+Go to **Settings → Devices & services → Add integration**, select **Ampio**,
+and enter the Ampio MQTT broker host, port, username, and password.
 
 ![config](https://github.com/kstaniek/ampio-hacc/blob/master/static/config1.png)
 
-Provide the Ampio server IP address and leave default port number.
-The username should be admin and with the admin pasword configured for Ampio Smart Home Application.
-Click `Submit` button.
+Provide the Ampio server address and leave port `1883` unless your broker uses a
+different port. Use the MQTT credentials configured on the Ampio Server.
 
 ![config](https://github.com/kstaniek/ampio-hacc/blob/master/static/config2.png)
 
-Click `Finish`
-
-Once you finish the configuration you should see the Ampio integration on the list of installe integration with the number of discovered items.
+After setup, the integration requests the CAN device list and descriptions over
+MQTT and creates the supported devices and entities automatically.
 
 ![config](https://github.com/kstaniek/ampio-hacc/blob/master/static/config3.png)
 
